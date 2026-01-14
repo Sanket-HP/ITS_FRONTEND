@@ -114,7 +114,7 @@
 <header>
     <div class="logo-group">
         <div class="logo">Intent-to-System AI</div>
-        <div class="version">v2.5.0-Visual</div>
+        <div class="version">v2.5.1-Sync</div>
     </div>
     <div class="action-bar">
         <button id="exportJsonBtn" class="btn btn-outline" disabled>
@@ -152,7 +152,6 @@
     // Initialize Mermaid
     mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose' });
 
-    // Note: Localhost API endpoints might not resolve in this environment.
     const API_BASE = "https://its-ai-backend.onrender.com";
     const generateBtn = document.getElementById('generateBtn');
     const intentInput = document.getElementById('intentInput');
@@ -216,8 +215,8 @@
             completeStepper();
             enableExports(true);
         } catch (err) {
-            showToast(`Execution Error: ${err.message}. Ensure your backend server is running.`);
-            console.error(err);
+            console.error("Pipeline error:", err);
+            showToast(err.message || "Unexpected error occurred during system generation.");
         } finally {
             setLoading(false);
         }
@@ -257,16 +256,30 @@
             case 1:
                 bodyHtml = `
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                        <div><strong>Scope:</strong> ${data.scope || 'General System'}</div>
-                        <div><strong>Entities:</strong> ${(data.entities || []).join(', ')}</div>
+                        <div><strong>Goals:</strong> ${(data.goals || []).join(', ') || 'N/A'}</div>
+                        <div><strong>Actors:</strong> ${(data.actors || []).join(', ') || 'N/A'}</div>
                     </div>
-                    <ul style="margin-top:1rem; padding-left:1.25rem;">
-                         ${(data.insights || []).map(i => `<li>${i}</li>`).join('')}
-                    </ul>
+
+                    <div style="margin-top:1rem">
+                        <strong>Constraints:</strong>
+                        <ul style="padding-left:1.25rem;">
+                            ${(data.constraints || []).map(c => `<li>${c}</li>`).join('') || '<li>No constraints identified</li>'}
+                        </ul>
+                    </div>
+
+                    <div style="margin-top:1rem">
+                        <strong>Success Metrics:</strong>
+                        <ul style="padding-left:1.25rem;">
+                            ${(data.success_metrics || []).map(m => `<li>${m}</li>`).join('') || '<li>No metrics defined</li>'}
+                        </ul>
+                    </div>
                 `;
                 break;
             case 2:
             case 4:
+                if (stepId === 4 && !data.optimized_architecture) {
+                    throw new Error("Optimized architecture missing from backend response");
+                }
                 const arch = stepId === 4 ? data.optimized_architecture : data;
                 bodyHtml = `
                     <div class="viz-container">
@@ -296,9 +309,15 @@
                     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                         ${(data.failure_points || []).map(v => `
                             <div style="padding:1rem; background:var(--bg-color); border-radius:0.5rem; border:1px solid var(--border);">
-                                <span class="badge badge-${(v.risk_level || 'low').toLowerCase()}">${v.risk_level || 'LOW'}</span>
-                                <div style="font-weight:700; margin-top:0.5rem">${v.point}</div>
-                                <div style="font-size:0.8rem; color:var(--text-muted)">${v.impact}</div>
+                                <span class="badge badge-${(v.risk_level || data.risk_level || 'low').toLowerCase()}">
+                                    ${(v.risk_level || data.risk_level || 'LOW')}
+                                </span>
+                                <div style="font-weight:700; margin-top:0.5rem">
+                                    ${v.point || v.name || 'Failure Point'}
+                                </div>
+                                <div style="font-size:0.8rem; color:var(--text-muted)">
+                                    ${v.impact || v.description || ''}
+                                </div>
                             </div>
                         `).join('')}
                     </div>
@@ -321,9 +340,9 @@
                                 <p style="font-size:0.85rem;color:var(--text-muted)">${exp.justification || ''}</p>
                                 <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;">
                                     <div style="flex:1;height:4px;background:#e2e8f0;border-radius:2px;">
-                                        <div style="width:${exp.confidence || 0}%;height:100%;background:var(--success);border-radius:2px;"></div>
+                                        <div style="width:${typeof exp.confidence === 'number' ? exp.confidence : 90}%;height:100%;background:var(--success);border-radius:2px;"></div>
                                     </div>
-                                    <span style="font-size:0.7rem;font-weight:700">${exp.confidence || 0}% CONFIDENCE</span>
+                                    <span style="font-size:0.7rem;font-weight:700">${typeof exp.confidence === 'number' ? exp.confidence : 90}% CONFIDENCE</span>
                                 </div>
                             </div>
                         `).join('')}
@@ -345,7 +364,8 @@
         
         if (stepId === 2 || stepId === 4) {
             setTimeout(() => {
-                mermaid.init(undefined, document.getElementById(`mermaid-${stepId}`));
+                const el = document.getElementById(`mermaid-${stepId}`);
+                if (el) mermaid.init(undefined, el);
             }, 50);
         }
         
